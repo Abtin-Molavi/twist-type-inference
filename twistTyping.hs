@@ -16,17 +16,19 @@ newtype TyVar = TyVar String
 type TyCons = (TyEx, TyEx)
 
 data StTy = Pure | Mixed
-    deriving (Show, Eq)
+    deriving (Show, Ord, Eq)
 
 data TwEx =
-            QInit Maybe TwTy | Var String Maybe TwTy | FunVar String Maybe TwTy
-            | U1 TwEx Maybe TwTy | U2 TwEx Maybe TwTy
-            | LetEx TwEx TwEx TwEx Maybe TwTy  |  App TwEx TwEx Maybe TwTy | Pair TwEx Maybe TwTy
-            | ITE TwEx TwEx TwEx Maybe TwTy| TwT Maybe TwTy | TwF Maybe TwTy | Msr TwEx Maybe TwTy
-            | MkEnt StTy TwEx Maybe TwTy | Split StTy TwEx Maybe TwTy | Cast StTy TwEx Maybe TwTy
+            QInit (Maybe TwTy) | Var String (Maybe TwTy) | FunVar String (Maybe TwTy)
+            | U1 TwEx (Maybe TwTy) | U2 TwEx (Maybe TwTy)
+            | LetEx TwEx TwEx TwEx (Maybe TwTy)  |  App TwEx TwEx (Maybe TwTy) | Pair TwEx TwEx (Maybe TwTy)
+            | ITE TwEx TwEx TwEx (Maybe TwTy)| TwT (Maybe TwTy) | TwF (Maybe TwTy) | Msr TwEx (Maybe TwTy)
+            | MkEnt StTy TwEx (Maybe TwTy) | Split StTy TwEx (Maybe TwTy) | Cast StTy TwEx (Maybe TwTy)
 
-data TwProg = Fun String String TwEx TwProg Maybe TwTy | Main TwEx Maybe TwTy
+data TwProg = Fun String String TwEx TwProg (Maybe TwTy) | Main TwEx (Maybe TwTy)
 
+
+data IdTree = Node String | MkTree3 IdTree IdTree IdTree | MkTree2 IdTree IdTree  | MkTree1 IdTree
 -- (foldl Set.union Set.empty (map (\x -> Set.union (freeVars $ fst x)  (freeVars $ snd x))  (genConstraints expr)))
 
 -- genConstraints :: Set.Set TyVar -> TwEx -> [TyCons]
@@ -35,6 +37,15 @@ data TwProg = Fun String String TwEx TwProg Maybe TwTy | Main TwEx Maybe TwTy
 -- genConstraints currentVars QInit = []
 -- genConstraints currentVars (U1 expr) = (PlainVar tyv, Exactly (Mixed Qubit)) : genConstraints (Set.union (Set.fromList [tyv]) currentVars) expr
 --     where [tyv] = freshVars 1 currentVars
+
+exprToIdTree :: String -> TwEx -> IdTree
+exprToIdTree rootStr (QInit _) = Node rootStr
+exprToIdTree rootStr (Var _ _) = Node rootStr
+exprToIdTree rootStr (FunVar _ _) = Node rootStr
+exprToIdTree rootStr (U1 expr _) = MkTree1 (exprToIdTree (rootStr++"0") expr)
+exprToIdTree rootStr (U2 expr _) = MkTree1 (exprToIdTree (rootStr++"0") expr)
+exprToIdTree rootStr (LetEx lhs rhs expr _) = MkTree3 (exprToIdTree (rootStr++"0") lhs) (exprToIdTree (rootStr++"1")  rhs) (exprToIdTree (rootStr++"2") expr)
+exprToIdTree rootStr (App e1 e2 _) = MkTree2 (exprToIdTree (rootStr++"0") e1) (exprToIdTree (rootStr++"1") e2)
 
 solveConstraints :: [TyCons] -> Maybe (Map.Map TyEx TyEx)
 solveConstraints [] = Just Map.empty
