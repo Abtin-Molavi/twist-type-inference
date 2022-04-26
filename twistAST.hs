@@ -6,14 +6,6 @@ data QTy = Qubit | Ent QTy QTy
 data TwTy = TwBool | QuantTy StTy QTy | Prod TwTy TwTy | Func TwTy TwTy
     deriving (Show, Ord, Eq)
 
-data TyEx = PlainVar TyVar | Exactly TwTy | FuncEx TyEx TyEx | ProdEx TyEx TyEx
-    deriving (Show, Ord, Eq)
-
-newtype TyVar = TyVar String
-    deriving (Show, Ord, Eq)
-
-type TyCons = (TyEx, TyEx)
-
 data StTy = Pure | Mixed
     deriving (Show, Ord, Eq)
 

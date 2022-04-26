@@ -2,7 +2,14 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 
 import TwistAST
-import TwistParsing
+
+data TyEx = PlainVar TyVar | Exactly TwTy | FuncEx TyEx TyEx | ProdEx TyEx TyEx
+    deriving (Show, Ord, Eq)
+
+newtype TyVar = TyVar String
+    deriving (Show, Ord, Eq)
+
+type TyCons = (TyEx, TyEx)
 
 data IdTree = Node String | MkTree3 IdTree IdTree IdTree | MkTree2 IdTree IdTree  | MkTree1 IdTree
 -- (foldl Set.union Set.empty (map (\x -> Set.union (freeVars $ fst x)  (freeVars $ snd x))  (genConstraints expr)))
