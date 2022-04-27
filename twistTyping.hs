@@ -3,6 +3,9 @@ import qualified Data.Map as Map
 import Language.Haskell.TH (Exp(LetE))
 
 import TwistAST
+import TwistParsing
+import Data.Maybe (fromJust)
+
 
 data TyEx = PlainVar TyVar | ExactlySt StTy | ExactlyQTy QTy | Exactly TwTy |  ExactlyQ StTy QTy  | QEx TyEx TyEx | EntEx TyEx TyEx | FuncEx TyEx TyEx | ProdEx TyEx TyEx
     deriving (Show, Ord, Eq)
@@ -12,8 +15,8 @@ type TyVar = String
 type TyCons = (TyEx, TyEx)
 
 data TwExL =
-            QInitL (Maybe TwTy) String | VarL String (Maybe TwTy)  String  | FunVarL String (Maybe TwTy) String
-            | U1L TwExL (Maybe TwTy)  String | U2L TwExL (Maybe TwTy) String
+            QInitL (Maybe TwTy) String | VarL String (Maybe TwTy)  String  | VarNullL (Maybe TwTy) String | FunVarL String (Maybe TwTy) String
+            | U1L String TwExL (Maybe TwTy)  String | U2L String TwExL (Maybe TwTy) String
             | LetExL TwExL TwExL TwExL(Maybe TwTy)  String | AppL TwExL TwExL (Maybe TwTy)  String | PairL TwExL TwExL (Maybe TwTy) String | QRefL String (Maybe TwTy) String | QPairL  TwExL TwExL (Maybe TwTy) String
             | ITEL TwExL TwExL TwExL (Maybe TwTy) String | TwTL (Maybe TwTy)  String | TwFL (Maybe TwTy)  String | MsrL TwExL (Maybe TwTy) String
             | MkEntL StTy TwExL (Maybe TwTy) String  | SplitL StTy TwExL (Maybe TwTy)  String | CastL StTy TwExL (Maybe TwTy) String
@@ -23,14 +26,15 @@ data TwExL =
 
 labeledAST' :: String -> TwEx -> TwExL
 labeledAST' rootStr (QInit t) = QInitL t rootStr
+labeledAST' rootStr (VarNull t) = VarNullL  t rootStr
 labeledAST' rootStr (TwT t) = TwTL t rootStr
 labeledAST' rootStr (TwF t) = TwFL t rootStr
 
 labeledAST' rootStr (Var s t) = VarL s t rootStr
 labeledAST' rootStr (QRef  nme t) = QRefL  nme t rootStr
 
-labeledAST' rootStr (U1 s expr t) = U1L (labeledAST' (rootStr++"0") expr) t rootStr
-labeledAST' rootStr (U2 s expr t) = U2L (labeledAST' (rootStr++"0") expr) t rootStr
+labeledAST' rootStr (U1 s expr t) = U1L s (labeledAST' (rootStr++"0") expr) t rootStr
+labeledAST' rootStr (U2 s expr t) = U2L s (labeledAST' (rootStr++"0") expr) t rootStr
 labeledAST' rootStr (Msr expr t) = MsrL (labeledAST' (rootStr++"0") expr) t rootStr
 
 labeledAST' rootStr (MkEnt stty expr t) = MkEntL stty (labeledAST' (rootStr++"0") expr) t rootStr
@@ -45,19 +49,20 @@ labeledAST' rootStr (QPair e1 e2 t) = QPairL  (labeledAST' (rootStr++"0") e1) (l
 labeledAST' rootStr (LetEx e1 e2 e3 t) = LetExL (labeledAST' (rootStr++"0") e1)  (labeledAST' (rootStr++"1") e2) (labeledAST' (rootStr++"2") e3) t rootStr
 labeledAST' rootStr (ITE e1 e2 e3 t) = ITEL (labeledAST' (rootStr++"0") e1)  (labeledAST' (rootStr++"1") e2) (labeledAST' (rootStr++"2") e3) t rootStr
 
-labeledAST :: TwEx -> TwExL
-labeledAST = labeledAST' "0"
+labeledAST :: String -> TwEx -> TwExL
+labeledAST prefix = labeledAST' $ prefix++"0"
 
 
 getLabel :: TwExL -> String
+getLabel (VarNullL _ s) = s
 getLabel (QInitL _ s) = s
 getLabel (TwTL _ s) = s
 getLabel (TwFL _ s) = s
 getLabel (VarL _ _ s) = s
 getLabel (QRefL __ _ s) = s
 getLabel (FunVarL _ _ s) = s
-getLabel (U1L expr t s) = s
-getLabel (U2L expr t s) = s
+getLabel (U1L _ expr t s) = s
+getLabel (U2L _ expr t s) = s
 getLabel (MsrL expr t s) =s
 
 getLabel (MkEntL stty expr t s) = s
@@ -72,24 +77,114 @@ getLabel (QPairL e1 e2 t s ) = s
 getLabel (LetExL e1 e2 e3 t s) = s
 getLabel (ITEL e1 e2 e3 t s) = s
 
-ctxConstraints :: TwExL -> Map.Map TwExL TyVar -> [TyCons]
-ctxConstraints exp map = case Map.lookup exp map of
+getType :: TwEx -> Maybe TwTy
+getType (VarNull t) = t
+getType (QInit t) = t
+getType (TwT t) = t
+getType (TwF  t) = t
+getType (Var  _ t) = t
+getType (QRef _  t) = t
+
+getType (U1 _ expr t ) = t
+getType (U2 _ expr t ) = t
+getType (Msr expr t) = t
+
+getType (MkEnt stty expr t) = t
+getType (Split stty expr t) = t
+getType (Cast stty expr t) = t
+
+getType (App e1 e2 t) = t
+getType (Pair e1 e2 t) = t
+getType (QPair e1 e2 t) = t
+
+
+getType (LetEx e1 e2 e3 t) = t
+getType (ITE e1 e2 e3 t) = t
+
+
+
+unlabel :: TwExL -> TwEx
+unlabel (VarNullL x _) = VarNull x
+unlabel (QInitL x _) = QInit  x
+unlabel (TwTL x _) = TwT x
+unlabel (TwFL x _) = TwF x
+unlabel (VarL x y  _ ) = Var x y 
+unlabel (QRefL x y s) = QRef x y 
+unlabel (FunVarL x y s) = error "not in TwEx"
+unlabel (U1L nme expr t s) = U1 nme (unlabel expr) t
+unlabel (U2L nme expr t s) = U2 nme (unlabel expr) t
+unlabel (MsrL expr t s) = Msr (unlabel expr) t
+
+unlabel (MkEntL stty expr t s) = MkEnt stty (unlabel expr) t
+unlabel (SplitL stty expr t s) =  Split stty (unlabel expr) t
+unlabel (CastL stty expr t s) = Cast stty (unlabel expr) t
+
+unlabel (AppL e1 e2 t s) = App (unlabel e1) (unlabel e2) t
+unlabel (PairL e1 e2 t s ) = Pair (unlabel e1) (unlabel e2) t
+unlabel (QPairL e1 e2 t s ) = QPair (unlabel e1) (unlabel e2) t
+
+
+unlabel (LetExL e1 e2 e3 t s) = LetEx (unlabel e1) (unlabel e2) (unlabel e3) t
+unlabel (ITEL e1 e2 e3 t s) = ITE (unlabel e1) (unlabel e2) (unlabel e3) t
+
+ctxConstraints :: TwExL -> Map.Map TwEx TyVar -> [TyCons]
+ctxConstraints exp map = case Map.lookup (unlabel exp) map of
   Nothing -> []
   Just s -> [(PlainVar $ getLabel exp, PlainVar s)]
 
-genConstraints' ::  TwExL -> Map.Map TwExL TyVar -> [TyCons]
+
+genConstraints' ::  TwExL -> Map.Map TwEx TyVar -> [TyCons]
+
+-- Basic data types
+genConstraints' exp@ VarL {} ctx = ctxConstraints exp ctx
+genConstraints' exp@VarNullL {} ctx = ctxConstraints exp ctx
+genConstraints' exp@FunVarL {} ctx = ctxConstraints exp ctx
+genConstraints' exp@(TwTL _ label) ctx = (PlainVar label, Exactly TwBool ) : ctxConstraints exp ctx
+genConstraints' exp@(TwFL _ label) ctx = (PlainVar label, Exactly TwBool ) : ctxConstraints exp ctx
 genConstraints' exp@(QInitL _ label) ctx = (PlainVar label, ExactlyQ Pure Qubit) : ctxConstraints exp ctx
-genConstraints' exp@(U1L input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints'  input ctx ++ ctxConstraints exp ctx
-genConstraints' exp@(U2L input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(QRefL _ _ label) ctx = (PlainVar label, QEx (PlainVar $ "st" ++ label) (ExactlyQTy Qubit)) : ctxConstraints exp ctx
+genConstraints' exp@(PairL l r _ label) ctx = (PlainVar label, ProdEx (PlainVar (getLabel l )) (PlainVar (getLabel r))):genConstraints' l ctx  ++ genConstraints' r ctx ++ ctxConstraints exp ctx
 genConstraints' exp@(QPairL l r _ label) ctx = (PlainVar label, QEx (PlainVar ("st" ++ lty)) (EntEx (PlainVar ("q" ++ lty)) (PlainVar ("q" ++ lty)))) : (PlainVar lty, QEx (PlainVar ("st" ++ lty)) (PlainVar ("q" ++ lty))): (PlainVar lty, PlainVar rty): genConstraints' l ctx ++ genConstraints' r ctx ++ ctxConstraints exp ctx
     where (lty, rty) = tMap getLabel (l, r)
-genConstraints' exp@(LetExL lhs rhs expr _ label) ctx = (PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs ctx  ++ genConstraints' rhs ctx ++ genConstraints' expr (Map.insert lhs (getLabel lhs) ctx)
-genConstraints' exp@(SplitL sty expr  _ label) ctx = [(PlainVar (getLabel expr),  QEx (PlainVar ("st" ++ exty)) (PlainVar ("q" ++ exty)))]
-    where exty = getLabel expr
 
+-- Operations
+genConstraints' exp@(AppL fun input _ label) ctx = (PlainVar $ getLabel fun, FuncEx (PlainVar $ getLabel input) $ PlainVar label):genConstraints' fun ctx  ++ genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(U1L _ input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints'  input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(U2L _ input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(MsrL input _ label) ctx = (PlainVar label, Exactly TwBool):(PlainVar (getLabel input), QEx (PlainVar $ "st"++getLabel input) (ExactlyQTy Qubit)): genConstraints' input ctx ++ ctxConstraints exp ctx
 
-genConstraints :: TwEx -> [TyCons]
-genConstraints = flip genConstraints' Map.empty . labeledAST
+-- Control-flow
+genConstraints' exp@(ITEL cond left right _ label) ctx = (PlainVar (getLabel cond), Exactly TwBool):(PlainVar (getLabel right), PlainVar (getLabel left)):(PlainVar $ getLabel left, QEx (PlainVar $"st"++getLabel left) (PlainVar $"q"++getLabel left)):(PlainVar label, QEx (ExactlySt Mixed) (PlainVar $ "q"++getLabel left) ): genConstraints' left ctx ++ genConstraints' right ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(LetExL lhs@(PairL l1 l2 _ llbl) rhs expr _ label) ctx = (PlainVar label, PlainVar (getLabel expr)):(PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs ctx  ++ genConstraints' rhs ctx ++ genConstraints' expr (Map.insert (unlabel l1) (getLabel l1) ctx')
+    where ctx' = Map.insert (unlabel l2) (getLabel l2) ctx
+
+--  Entangle, Split, and Cast: the Purity operators
+genConstraints' exp@(SplitL sty input  _ label) ctx = (PlainVar (getLabel input),  QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) :                                                     (PlainVar label, ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("ql" ++ exty))) (QEx (PlainVar ("st"++exty)) (PlainVar ("qr" ++ exty)))) : genConstraints' input ctx ++ ctxConstraints exp ctx
+    where exty = getLabel input
+genConstraints' exp@(MkEntL sty input  _ label) ctx = (PlainVar label,  QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("ql" ++ exty)) (PlainVar ("qr" ++ exty)))) :
+                                                     (PlainVar (getLabel input), ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
+    where exty = getLabel input
+genConstraints' exp@(CastL sty input _ label) ctx = (PlainVar label, QEx (ExactlySt sty) (PlainVar ("q" ++ exty))):(PlainVar exty, QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty))):genConstraints' input ctx ++ ctxConstraints exp ctx
+    where exty = getLabel input
+genConstraints' _ _ = error "genConstraints error: not implemented"
+
+genConstraintsEx :: String -> Map.Map TwEx TyVar -> TwEx -> [TyCons]
+genConstraintsEx prefix map expr = genConstraints' (labeledAST prefix expr) map
+
+progToFunList :: TwProg -> [(String, TwEx, TwEx)] 
+progToFunList (Main expr _) = [("Main", VarNull Nothing, expr)]
+progToFunList (Fun name input def rest  _) = (name, input, def):progToFunList rest
+
+genConstraintsFunList :: Map.Map TwEx TyVar -> [(String, TwEx, TwEx)] -> [TyCons]
+genConstraintsFunList map [("Main", VarNull Nothing, expr)] =  genConstraintsEx "main" map expr
+genConstraintsFunList map ((name, input, def):xs) = (PlainVar name, FuncEx (PlainVar (name++"_in")) (PlainVar (name++"0"))):inputConstraint ++ genConstraintsEx name (Map.insert input (name++"in") map) def ++ genConstraintsFunList (Map.insert (Var name Nothing) name map ) xs 
+    where inputConstraint =
+                case getType input of
+                    Nothing -> []
+                    Just t -> [(PlainVar $ name++"_in", Exactly t)]
+
+genConstraintsProg :: TwProg -> [TyCons]
+genConstraintsProg prog = genConstraintsFunList Map.empty (progToFunList prog)
 
 solveConstraints :: [TyCons] -> Maybe (Map.Map TyEx TyEx)
 solveConstraints [] = Just Map.empty
@@ -102,6 +197,7 @@ solveConstraints (eq : rest) =
         (ProdEx t1 t2, ProdEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, QEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, ExactlyQ s1 s2) -> solveConstraints ((t1, ExactlySt s1):(t2,ExactlyQTy s2):rest)
+        (ExactlyQ t1 t2, QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
         (EntEx t1 t2, EntEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (lhs, rhs) -> Nothing
 
@@ -135,3 +231,6 @@ freshVars n tyVars = take n [s | s <- allStringsLetters, not (Set.member s strs)
     where
         strs = Set.union (Set.singleton "") tyVars
         allStringsLetters = [c : s | s <- "" : allStringsLetters, c <- ['a'..'z']]
+
+
+ex = LetEx (Var "x" Nothing) (QInit  Nothing) (ITE (Msr (QInit Nothing) Nothing) (Var "x" Nothing) (U2 "X" (Var "x" Nothing) Nothing) Nothing ) Nothing
