@@ -34,7 +34,7 @@ data TwProg = Fun String String TwEx TwProg (Maybe TwTy) | Main TwEx (Maybe TwTy
 data TwExL =
             QInitL (Maybe TwTy) String | VarL String (Maybe TwTy)  String  | FunVarL String (Maybe TwTy) String
             | U1L TwExL (Maybe TwTy)  String | U2L TwExL (Maybe TwTy) String
-            | LetExL TwExL TwExL TwExL(Maybe TwTy)  String | AppL TwExL TwExL(Maybe TwTy)  String | PairL TwExL TwExL(Maybe TwTy) String | QRefL String (Maybe TwTy) String | QPairL  TwExL TwExL (Maybe TwTy) String
+            | LetExL TwExL TwExL TwExL(Maybe TwTy)  String | AppL TwExL TwExL (Maybe TwTy)  String | PairL TwExL TwExL (Maybe TwTy) String | QRefL String (Maybe TwTy) String | QPairL  TwExL TwExL (Maybe TwTy) String
             | ITEL TwExL TwExL TwExL (Maybe TwTy) String | TwTL (Maybe TwTy)  String | TwFL (Maybe TwTy)  String | MsrL TwExL (Maybe TwTy) String
             | MkEntL StTy TwExL (Maybe TwTy) String  | SplitL StTy TwExL (Maybe TwTy)  String | CastL StTy TwExL (Maybe TwTy) String
     deriving (Show, Ord, Eq)
@@ -93,17 +93,24 @@ getLabel (QPairL e1 e2 t s ) = s
 getLabel (LetExL e1 e2 e3 t s) = s
 getLabel (ITEL e1 e2 e3 t s) = s
 
+ctxConstraints :: TwExL -> Map.Map TwExL TyVar -> [TyCons]
+ctxConstraints exp map = case Map.lookup exp map of
+  Nothing -> []
+  Just s -> [(PlainVar $ getLabel exp, PlainVar s)]
 
 genConstraints' ::  TwExL -> Map.Map TwExL TyVar -> [TyCons]
-genConstraints' (QInitL _ label) ctx = [(PlainVar label, ExactlyQ Pure Qubit)]
-genConstraints' (U1L input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints'  input ctx
-genConstraints' (U2L input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints' input ctx
-genConstraints' (QPairL l r _ label) ctx = (PlainVar label, QEx (PlainVar ("st" ++ lty)) (EntEx (PlainVar ("q" ++ lty)) (PlainVar ("q" ++ lty)))) : (PlainVar lty, QEx (PlainVar ("st" ++ lty)) (PlainVar ("q" ++ lty))): (PlainVar lty, PlainVar rty): genConstraints' l ctx ++ genConstraints' r ctx
+genConstraints' exp@(QInitL _ label) ctx = (PlainVar label, ExactlyQ Pure Qubit) : ctxConstraints exp ctx
+genConstraints' exp@(U1L input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints'  input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(U2L input _ label) ctx = (PlainVar label, PlainVar (getLabel input)): genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(QPairL l r _ label) ctx = (PlainVar label, QEx (PlainVar ("st" ++ lty)) (EntEx (PlainVar ("q" ++ lty)) (PlainVar ("q" ++ lty)))) : (PlainVar lty, QEx (PlainVar ("st" ++ lty)) (PlainVar ("q" ++ lty))): (PlainVar lty, PlainVar rty): genConstraints' l ctx ++ genConstraints' r ctx ++ ctxConstraints exp ctx
     where (lty, rty) = tMap getLabel (l, r)
-genConstraints' (LetExL lhs rhs expr _ label) ctx = (PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs ctx  ++ genConstraints' rhs ctx ++ genConstraints' expr ctx
+genConstraints' exp@(LetExL lhs rhs expr _ label) ctx = (PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs ctx  ++ genConstraints' rhs ctx ++ genConstraints' expr (Map.insert lhs (getLabel lhs) ctx)
+genConstraints' exp@(SplitL sty expr  _ label) ctx = [(PlainVar (getLabel expr),  QEx (PlainVar ("st" ++ exty)) (PlainVar ("q" ++ exty)))]
+    where exty = getLabel expr
+
 
 genConstraints :: TwEx -> [TyCons]
-genConstraints = genConstraints' . labeledAST
+genConstraints = flip genConstraints' Map.empty . labeledAST
 
 solveConstraints :: [TyCons] -> Maybe (Map.Map TyEx TyEx)
 solveConstraints [] = Just Map.empty
