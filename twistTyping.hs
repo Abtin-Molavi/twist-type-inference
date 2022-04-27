@@ -2,13 +2,7 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Language.Haskell.TH (Exp(LetE))
 
-
-data QTy = Qubit | Ent QTy QTy
-    deriving (Show, Ord, Eq)
-
-
-data TwTy = TwBool | Prod TwTy TwTy | Func TwTy TwTy
-    deriving (Show, Ord, Eq)
+import TwistAST
 
 data TyEx = PlainVar TyVar | ExactlySt StTy | ExactlyQTy QTy | Exactly TwTy |  ExactlyQ StTy QTy  | QEx TyEx TyEx | EntEx TyEx TyEx | FuncEx TyEx TyEx | ProdEx TyEx TyEx
     deriving (Show, Ord, Eq)
@@ -16,20 +10,6 @@ data TyEx = PlainVar TyVar | ExactlySt StTy | ExactlyQTy QTy | Exactly TwTy |  E
 type TyVar = String
 
 type TyCons = (TyEx, TyEx)
-
-data StTy = Pure | Mixed
-    deriving (Show, Ord, Eq)
-
-data TwEx =
-            QInit (Maybe TwTy) | Var String (Maybe TwTy) | FunVar String (Maybe TwTy)
-            | U1 TwEx (Maybe TwTy) | U2 TwEx (Maybe TwTy)
-            | LetEx TwEx TwEx TwEx (Maybe TwTy)  |  App TwEx TwEx (Maybe TwTy) | Pair TwEx TwEx (Maybe TwTy) |QRef  String (Maybe TwTy) | QPair  TwEx TwEx (Maybe TwTy)
-            | ITE TwEx TwEx TwEx (Maybe TwTy)| TwT (Maybe TwTy) | TwF (Maybe TwTy) | Msr TwEx (Maybe TwTy)
-            | MkEnt StTy TwEx (Maybe TwTy) | Split StTy TwEx (Maybe TwTy) | Cast StTy TwEx (Maybe TwTy)
-    deriving (Show, Ord, Eq)
-
-data TwProg = Fun String String TwEx TwProg (Maybe TwTy) | Main TwEx (Maybe TwTy)
-    deriving (Show, Ord, Eq)
 
 data TwExL =
             QInitL (Maybe TwTy) String | VarL String (Maybe TwTy)  String  | FunVarL String (Maybe TwTy) String
@@ -47,11 +27,10 @@ labeledAST' rootStr (TwT t) = TwTL t rootStr
 labeledAST' rootStr (TwF t) = TwFL t rootStr
 
 labeledAST' rootStr (Var s t) = VarL s t rootStr
-labeledAST' rootStr (FunVar s t) = FunVarL s t rootStr
 labeledAST' rootStr (QRef  nme t) = QRefL  nme t rootStr
 
-labeledAST' rootStr (U1 expr t) = U1L (labeledAST' (rootStr++"0") expr) t rootStr
-labeledAST' rootStr (U2 expr t) = U2L (labeledAST' (rootStr++"0") expr) t rootStr
+labeledAST' rootStr (U1 s expr t) = U1L (labeledAST' (rootStr++"0") expr) t rootStr
+labeledAST' rootStr (U2 s expr t) = U2L (labeledAST' (rootStr++"0") expr) t rootStr
 labeledAST' rootStr (Msr expr t) = MsrL (labeledAST' (rootStr++"0") expr) t rootStr
 
 labeledAST' rootStr (MkEnt stty expr t) = MkEntL stty (labeledAST' (rootStr++"0") expr) t rootStr
