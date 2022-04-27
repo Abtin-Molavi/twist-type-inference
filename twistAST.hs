@@ -3,10 +3,10 @@ module TwistAST where
 data QTy = Qubit | Ent QTy QTy
     deriving (Show, Ord, Eq)
 
-data TwTy = TwBool | QuantTy StTy QTy | Prod TwTy TwTy | Func TwTy TwTy
+data StTy = Pure | Mixed
     deriving (Show, Ord, Eq)
 
-data StTy = Pure | Mixed
+data TwTy = TwBool | QuantTy StTy QTy | Prod TwTy TwTy | Func TwTy TwTy
     deriving (Show, Ord, Eq)
 
 data TwEx =

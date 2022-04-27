@@ -1,4 +1,4 @@
-module TwistParsing (TwistParsing.parse) where
+module TwistParsing (TwistParsing.parse, unparse) where
 
 import Data.Char
 import Text.ParserCombinators.Parsec
@@ -210,7 +210,7 @@ parseExpressionLetParameters = try (do parseChar '('
                                        parseChar ')'
                                        Pair e1 e2 <$> parseType)
                            <|> try (do e <- parseParameter
-                                       return $ Pair e (Var "_" $ Just TwBool) Nothing)
+                                       return e)
                            <|> parseParentheses parseExpressionLetParameters
 
 parseExpressionLet :: GenParser Char st TwEx
@@ -220,7 +220,11 @@ parseExpressionLet = try (do parseString "let"
                              e1 <- parseExpression
                              parseString "in"
                              e2 <- parseExpression
-                             return $ LetEx x e1 e2 Nothing)
+                             return (case x of
+                                          (Pair _ _ _) -> LetEx x e1 e2 Nothing
+                                          x            -> LetEx (Pair x (Var "_" (Just TwBool)) Nothing)
+                                                                (Pair e1 (TwT Nothing) Nothing)
+                                                                e2 Nothing))
                  <|> parseExpressionIf
 
 parseExpression :: GenParser Char st TwEx
@@ -234,15 +238,18 @@ parseProgramFunctionParameters = try (do parseChar '('
                              <|> try (parseParentheses parseParameter)
 
 parseProgram :: GenParser Char st TwProg
-parseProgram = try (do parseString "fun"
+parseProgram = try (do spaces
+                       parseString "fun"
                        parseString "main"
                        parseChar '('
                        parseChar ')'
                        t <- parseType
                        parseChar '='
                        e <- parseExpression
+                       eof
                        return $ Main e t)
-           <|> try (do parseString "fun"
+           <|> try (do spaces
+                       parseString "fun"
                        f <- parseIdentifier
                        x <- parseProgramFunctionParameters
                        t <- parseType
@@ -253,3 +260,56 @@ parseProgram = try (do parseString "fun"
 
 parse :: String -> Either ParseError TwProg
 parse = Text.ParserCombinators.Parsec.parse parseProgram ""
+
+unparseQuantumType :: QTy -> String
+unparseQuantumType Qubit = "qubit"
+unparseQuantumType (Ent q1 q2) = "(" ++ unparseQuantumType q1 ++ " & " ++ unparseQuantumType q2 ++ ")"
+
+unparsePurity :: StTy -> String
+unparsePurity Pure = "P"
+unparsePurity Mixed = "M"
+
+unparseType :: TwTy -> String
+unparseType TwBool = "bool"
+unparseType (QuantTy p q) = unparseQuantumType q ++ "<" ++ unparsePurity p ++ ">"
+unparseType (Prod t1 t2) = "(" ++ unparseType t1 ++ " * " ++ unparseType t2 ++ ")"
+unparseType (Func t1 t2) = unparseType t1 ++ " -> " ++ unparseType t2
+
+unparseExpression :: TwEx -> String
+unparseExpression (QInit _) = "qinit ()"
+unparseExpression (Var x (Just t)) = x ++ " : " ++ unparseType t
+unparseExpression (Var x Nothing) = x
+unparseExpression (U1 u e _) = u ++ " (" ++ unparseExpression e ++ ")"
+unparseExpression (U2 u (Pair e1 e2 t) _) = u ++ " " ++ unparseExpression (Pair e1 e2 t)
+unparseExpression (U2 u e _) = u ++ " (" ++ unparseExpression e ++ ")"
+unparseExpression (LetEx (Pair x (Var "_" (Just TwBool)) _) (Pair e1 (TwT Nothing) _) e2 _) = "let " ++ unparseExpression x ++ " = " ++ unparseExpression e1 ++ " in\n\t" ++ unparseExpression e2
+unparseExpression (LetEx x e1 e2 _) = "let " ++ unparseExpression x ++ " = " ++ unparseExpression e1 ++ " in\n\t" ++ unparseExpression e2
+unparseExpression (ITE b e1 e2 _) = "if " ++ unparseExpression b ++ " then " ++ unparseExpression e1 ++ " else " ++ unparseExpression e2
+unparseExpression (App e1 e2 _) = unparseExpression e1 ++ " (" ++ unparseExpression e2 ++ ")"
+unparseExpression (Pair e1 e2 _) = "(" ++ unparseExpression e1 ++ ", " ++ unparseExpression e2 ++ ")"
+unparseExpression (TwT _) = "true"
+unparseExpression (TwF _) = "false"
+unparseExpression (Msr e _) = "measure (" ++ unparseExpression e ++ ")"
+unparseExpression (MkEnt p (Pair e1 e2 t) _) = "entangle<" ++ unparsePurity p ++ ">" ++ unparseExpression (Pair e1 e2 t)
+unparseExpression (MkEnt p e _) = "entangle<" ++ unparsePurity p ++ ">(" ++ unparseExpression e ++ ")"
+unparseExpression (Split p (Pair e1 e2 t) _) = "split<" ++ unparsePurity p ++ ">" ++ unparseExpression (Pair e1 e2 t)
+unparseExpression (Split p e _) = "split<" ++ unparsePurity p ++ ">(" ++ unparseExpression e ++ ")"
+unparseExpression (Cast p (Pair e1 e2 t) _) = "cast<" ++ unparsePurity p ++ ">" ++ unparseExpression (Pair e1 e2 t)
+unparseExpression (Cast p e _) = "cast<" ++ unparsePurity p ++ ">(" ++ unparseExpression e ++ ")"
+unparseExpression _ = ""
+
+unparseProgram :: TwProg -> String
+unparseProgram (Fun f x e m (Just t)) =
+    "fun " ++ f ++ " (" ++ unparseExpression x ++ ") : " ++ unparseType t ++ " =\n\t"
+           ++ unparseExpression e ++ "\n\n" ++ unparseProgram m
+unparseProgram (Fun f x e m Nothing) =
+    "fun " ++ f ++ " (" ++ unparseExpression x ++ ") =\n\t"
+           ++ unparseExpression e ++ "\n\n" ++ unparseProgram m
+unparseProgram (Main e (Just t)) =
+    "fun main () : " ++ unparseType t ++ " =\n\t" ++ unparseExpression e ++ "\n"
+unparseProgram (Main e Nothing) =
+    "fun main () =\n\t" ++ unparseExpression e ++ "\n"
+
+unparse :: Either ParseError TwProg -> String
+unparse (Left _) = "error"
+unparse (Right m) = unparseProgram m
