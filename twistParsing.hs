@@ -5,7 +5,10 @@ import Text.ParserCombinators.Parsec
 import TwistAST
 
 parseString :: String -> GenParser Char st String
-parseString s = string s <* spaces
+parseString s = do string s
+                   notFollowedBy $ satisfy $ \c -> (c `notElem` "()<>&*=-:,") && not (isSpace c)
+                   spaces
+                   return s
 
 parseChar :: Char -> GenParser Char st Char
 parseChar c = char c <* spaces
@@ -18,9 +21,9 @@ parseParentheses = between (parseChar '(') (parseChar ')')
 
 -- Purities
 parsePurity :: GenParser Char st StTy
-parsePurity = try (do parseAngles $ parseChar 'P'
+parsePurity = try (do parseAngles $ parseString "P"
                       return Pure)
-          <|> try (do parseAngles $ parseChar 'M'
+          <|> try (do parseAngles $ parseString "M"
                       return Mixed)
 
 -- Quantum Types
@@ -70,6 +73,26 @@ parseType = do parseChar ':'
 -- Expressions
 parseIdentifier :: GenParser Char st String
 parseIdentifier = do notFollowedBy $ parseString "fun"
+                     notFollowedBy $ parseString "let"
+                     notFollowedBy $ parseString "in"
+                     notFollowedBy $ parseString "if"
+                     notFollowedBy $ parseString "then"
+                     notFollowedBy $ parseString "else"
+                     notFollowedBy $ parseString "true"
+                     notFollowedBy $ parseString "false"
+                     notFollowedBy $ parseString "qinit"
+                     notFollowedBy $ parseString "H"
+                     notFollowedBy $ parseString "X"
+                     notFollowedBy $ parseString "Y"
+                     notFollowedBy $ parseString "Z"
+                     notFollowedBy $ parseString "CNOT"
+                     notFollowedBy $ parseString "CZ"
+                     notFollowedBy $ parseString "TOF"
+                     notFollowedBy $ parseString "FRED"
+                     notFollowedBy $ parseString "measure"
+                     notFollowedBy $ parseString "entangle"
+                     notFollowedBy $ parseString "split"
+                     notFollowedBy $ parseString "cast"
                      first <- satisfy $ \x -> isAlpha x || x == '_'
                      rest <- many $ satisfy $ \x -> isAlpha x || isDigit x || x == '_'
                      spaces
@@ -203,5 +226,30 @@ parseExpressionLet = try (do parseString "let"
 parseExpression :: GenParser Char st TwEx
 parseExpression = parseExpressionLet
 
-parse :: String -> Either ParseError TwEx
-parse = Text.ParserCombinators.Parsec.parse parseExpression ""
+-- Programs
+parseProgramFunctionParameters :: GenParser Char st TwEx
+parseProgramFunctionParameters = try (do parseChar '('
+                                         parseChar ')'
+                                         return $ VarNull Nothing)
+                             <|> try (parseParentheses parseParameter)
+
+parseProgram :: GenParser Char st TwProg
+parseProgram = try (do parseString "fun"
+                       parseString "main"
+                       parseChar '('
+                       parseChar ')'
+                       t <- parseType
+                       parseChar '='
+                       e <- parseExpression
+                       return $ Main e t)
+           <|> try (do parseString "fun"
+                       f <- parseIdentifier
+                       x <- parseProgramFunctionParameters
+                       t <- parseType
+                       parseChar '='
+                       e <- parseExpression
+                       m <- parseProgram
+                       return $ Fun f x e m t)
+
+parse :: String -> Either ParseError TwProg
+parse = Text.ParserCombinators.Parsec.parse parseProgram ""

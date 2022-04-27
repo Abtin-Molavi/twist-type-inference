@@ -17,5 +17,5 @@ data TwEx =
             | MkEnt StTy TwEx (Maybe TwTy) | Split StTy TwEx (Maybe TwTy) | Cast StTy TwEx (Maybe TwTy)
     deriving (Show, Ord, Eq)
 
-data TwProg = Fun TwEx TwEx TwEx TwProg (Maybe TwTy) | Main TwEx (Maybe TwTy)
+data TwProg = Fun String TwEx TwEx TwProg (Maybe TwTy) | Main TwEx (Maybe TwTy)
     deriving (Show, Ord, Eq)
