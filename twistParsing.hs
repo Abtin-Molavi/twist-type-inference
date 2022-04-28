@@ -6,7 +6,8 @@ import TwistAST
 
 parseString :: String -> GenParser Char st String
 parseString s = do string s
-                   notFollowedBy $ satisfy $ \c -> (c `notElem` "()<>&*=-:,") && not (isSpace c)
+                   notFollowedBy $ satisfy $
+                           \c -> (c `notElem` "()<>&*=-:,") && not (isSpace c)
                    spaces
                    return s
 
@@ -94,7 +95,8 @@ parseIdentifier = do notFollowedBy $ parseString "fun"
                      notFollowedBy $ parseString "split"
                      notFollowedBy $ parseString "cast"
                      first <- satisfy $ \x -> isAlpha x || x == '_'
-                     rest <- many $ satisfy $ \x -> isAlpha x || isDigit x || x == '_'
+                     rest <- many $ satisfy $
+                             \x -> isAlpha x || isDigit x || x == '_'
                      spaces
                      return (first:rest)
 
@@ -179,17 +181,18 @@ parseExpressionCast label = do parseString "cast"
                                return $ Cast p e Nothing label
 
 parseExpressionApplication :: String -> GenParser Char st TwEx
-parseExpressionApplication label = try (parseExpressionUnitary1 label)
-                               <|> try (parseExpressionUnitary2 label)
-                               <|> try (parseExpressionMeasure label)
-                               <|> try (parseExpressionQInit label)
-                               <|> try (parseExpressionEntangle label)
-                               <|> try (parseExpressionSplit label)
-                               <|> try (parseExpressionCast label)
-                               <|> try (do e1 <- parseExpressionPair ("0" ++ label)
-                                           e2 <- parseExpressionArguments ("1" ++ label)
-                                           return $ App e1 e2 Nothing label)
-                               <|> parseExpressionPair label
+parseExpressionApplication label =
+        try (parseExpressionUnitary1 label)
+    <|> try (parseExpressionUnitary2 label)
+    <|> try (parseExpressionMeasure label)
+    <|> try (parseExpressionQInit label)
+    <|> try (parseExpressionEntangle label)
+    <|> try (parseExpressionSplit label)
+    <|> try (parseExpressionCast label)
+    <|> try (do e1 <- parseExpressionPair ("0" ++ label)
+                e2 <- parseExpressionArguments ("1" ++ label)
+                return $ App e1 e2 Nothing label)
+    <|> parseExpressionPair label
 
 -- TODO: Phase shifts
 
@@ -204,16 +207,17 @@ parseExpressionIf label = try (do parseString "if"
                       <|> parseExpressionApplication label
 
 parseExpressionLetParameters :: String -> GenParser Char st TwEx
-parseExpressionLetParameters label = try (do parseChar '('
-                                             e1 <- parseParameter ("0" ++ label)
-                                             parseChar ','
-                                             e2 <- parseParameter ("0" ++ label)
-                                             parseChar ')'
-                                             t <- parseType
-                                             return $ Pair e1 e2 t label)
-                                 <|> try (do e <- parseParameter ("1" ++ label)
-                                             return e)
-                                 <|> parseParentheses (parseExpressionLetParameters label)
+parseExpressionLetParameters label =
+        try (do parseChar '('
+                e1 <- parseParameter ("0" ++ label)
+                parseChar ','
+                e2 <- parseParameter ("0" ++ label)
+                parseChar ')'
+                t <- parseType
+                return $ Pair e1 e2 t label)
+    <|> try (do e <- parseParameter ("1" ++ label)
+                return e)
+    <|> parseParentheses (parseExpressionLetParameters label)
 
 parseExpressionLet :: String -> GenParser Char st TwEx
 parseExpressionLet label =
@@ -227,13 +231,18 @@ parseExpressionLet label =
                 e2 <- parseExpression ("2" ++ label)
                 return (case x of
                              Pair _ _ _ _ -> LetEx x e1 e2 Nothing label
-                             Var x' t _   -> LetEx (Pair (Var x' t ("00" ++ label))
-                                                         (Var "_" (Just TwBool) ("01" ++ label))
-                                                         Nothing ("0" ++ label))
-                                                   (Pair e1
-                                                         (TwT Nothing ("10" ++ label))
-                                                         Nothing ("1" ++ label))
-                                                   e2 Nothing label))
+                             Var  x' t _  ->
+                                     LetEx (Pair (Var x' t ("00" ++ label))
+                                                 (Var "_"
+                                                      (Just TwBool)
+                                                      ("01" ++ label))
+                                                 Nothing ("0" ++ label))
+                                           (Pair e1
+                                                 (TwT Nothing ("10" ++ label))
+                                                 Nothing ("1" ++ label))
+                                           e2
+                                           Nothing
+                                           label))
     <|> parseExpressionIf label
 
 parseExpression :: String -> GenParser Char st TwEx
@@ -241,10 +250,11 @@ parseExpression label = parseExpressionLet label
 
 -- Programs
 parseProgramFunctionParameters :: String -> GenParser Char st TwEx
-parseProgramFunctionParameters label = try (do parseChar '('
-                                               parseChar ')'
-                                               return $ VarNull Nothing label)
-                                   <|> try (parseParentheses (parseParameter label))
+parseProgramFunctionParameters label =
+        try (do parseChar '('
+                parseChar ')'
+                return $ VarNull Nothing label)
+    <|> try (parseParentheses (parseParameter label))
 
 parseProgram :: Int -> GenParser Char st TwProg
 parseProgram label = try (do spaces
@@ -260,7 +270,8 @@ parseProgram label = try (do spaces
                  <|> try (do spaces
                              parseString "fun"
                              f <- parseIdentifier
-                             x <- parseProgramFunctionParameters ("0." ++ show label)
+                             x <- parseProgramFunctionParameters
+                                     ("0." ++ show label)
                              t <- parseType
                              parseChar '='
                              e <- parseExpression ("1." ++ show label)
@@ -272,7 +283,8 @@ parse = Text.ParserCombinators.Parsec.parse (parseProgram 1) ""
 
 unparseQuantumType :: QTy -> String
 unparseQuantumType Qubit = "qubit"
-unparseQuantumType (Ent q1 q2) = "(" ++ unparseQuantumType q1 ++ " & " ++ unparseQuantumType q2 ++ ")"
+unparseQuantumType (Ent q1 q2) =
+        "(" ++ unparseQuantumType q1 ++ " & " ++ unparseQuantumType q2 ++ ")"
 
 unparsePurity :: StTy -> String
 unparsePurity Pure = "P"
@@ -280,49 +292,106 @@ unparsePurity Mixed = "M"
 
 unparseType :: TwTy -> String
 unparseType TwBool = "bool"
-unparseType (QuantTy p q) = unparseQuantumType q ++ "<" ++ unparsePurity p ++ ">"
-unparseType (Prod t1 t2) = "(" ++ unparseType t1 ++ " * " ++ unparseType t2 ++ ")"
+unparseType (QuantTy p q) =
+        unparseQuantumType q ++ "<" ++ unparsePurity p ++ ">"
+unparseType (Prod t1 t2) =
+        "(" ++ unparseType t1 ++ " * " ++ unparseType t2 ++ ")"
 unparseType (Func t1 t2) = unparseType t1 ++ " -> " ++ unparseType t2
 
-unparseExpression :: (String -> (Maybe TwTy) -> String -> String) -> TwEx -> String
-unparseExpression annotator (QInit t label) = annotator "qinit ()" t label
+unparseExpression :: (String -> (Maybe TwTy) -> String -> String)
+        -> TwEx -> String
 unparseExpression annotator (Var x t label) = annotator x t label
-unparseExpression annotator (U1 u e t label) = annotator (u ++ " (" ++ unparseExpression annotator e ++ ")") t label
-unparseExpression annotator (U2 u e t label) =
-    case e of
-         Pair _ _ _ _ -> annotator (u ++ " " ++ unparseExpression annotator e) t label
-         _            -> annotator (u ++ " (" ++ unparseExpression annotator e ++ ")") t label
-unparseExpression annotator (LetEx (Pair x (Var "_" (Just TwBool) _) _ _) (Pair e1 (TwT Nothing _) _ _) e2 t label) =
-    annotator ("let " ++ unparseExpression annotator x ++ " = " ++ unparseExpression annotator e1 ++ " in\n    " ++ unparseExpression annotator e2) t label
+unparseExpression annotator (VarNull _ _) = ""
+unparseExpression annotator (App e1 e2 t label) =
+        annotator (unparseExpression annotator e1
+                ++ " (" ++ unparseExpression annotator e2 ++ ")") t label
+unparseExpression annotator (Pair e1 e2 t label) =
+        annotator ("("
+                ++ unparseExpression annotator e1
+                ++ ", "
+                ++ unparseExpression annotator e2
+                ++ ")") t label
+unparseExpression annotator (QRef _ _ _) = ""
+unparseExpression annotator (QPair _ _ _ _) = ""
+unparseExpression annotator (LetEx (Pair x (Var "_" (Just TwBool) _) _ _)
+        (Pair e1 (TwT Nothing _) _ _) e2 t label) =
+        annotator ("let "
+                ++ unparseExpression annotator x
+                ++ " = "
+                ++ unparseExpression annotator e1
+                ++ " in\n    "
+                ++ unparseExpression annotator e2) t label
 unparseExpression annotator (LetEx x e1 e2 t label) =
-    annotator ("let " ++ unparseExpression annotator x ++ " = " ++ unparseExpression annotator e1 ++ " in\n    " ++ unparseExpression annotator e2) t label
+        annotator ("let "
+                ++ unparseExpression annotator x
+                ++ " = "
+                ++ unparseExpression annotator e1
+                ++ " in\n    "
+                ++ unparseExpression annotator e2) t label
 unparseExpression annotator (ITE b e1 e2 t label) =
-    annotator ("if " ++ unparseExpression annotator b ++ " then " ++ unparseExpression annotator e1 ++ " else " ++ unparseExpression annotator e2) t label
-unparseExpression annotator (App e1 e2 t label) = annotator (unparseExpression annotator e1 ++ " (" ++ unparseExpression annotator e2 ++ ")") t label
-unparseExpression annotator (Pair e1 e2 t label) = annotator ("(" ++ unparseExpression annotator e1 ++ ", " ++ unparseExpression annotator e2 ++ ")") t label
+        annotator ("if "
+                ++ unparseExpression annotator b
+                ++ " then "
+                ++ unparseExpression annotator e1
+                ++ " else "
+                ++ unparseExpression annotator e2) t label
 unparseExpression annotator (TwT t label) = annotator "true" t label
 unparseExpression annotator (TwF t label) = annotator "false" t label
-unparseExpression annotator (Msr e t label) = annotator ("measure (" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (QInit t label) = annotator "qinit ()" t label
+unparseExpression annotator (U1 u e t label) =
+        annotator (u ++ " (" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (U2 u e t label) =
+        case e of
+             Pair _ _ _ _ -> annotator
+                     (u ++ " " ++ unparseExpression annotator e) t label
+             _            -> annotator
+                     (u ++ " (" ++ unparseExpression annotator e ++ ")")
+                     t label
+unparseExpression annotator (Msr e t label) =
+        annotator ("measure (" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression annotator (MkEnt p e t label) =
     case e of
-         Pair _ _ _ _ -> annotator ("entangle<" ++ unparsePurity p ++ ">" ++ unparseExpression annotator e) t label
-         _            -> annotator ("entangle<" ++ unparsePurity p ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+         Pair _ _ _ _ -> annotator ("entangle<"
+                 ++ unparsePurity p
+                 ++ ">"
+                 ++ unparseExpression annotator e) t label
+         _            -> annotator ("entangle<"
+                 ++ unparsePurity p
+                 ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression annotator (Split p e t label) =
     case e of
-         Pair _ _ _ _ -> annotator ("split<" ++ unparsePurity p ++ ">" ++ unparseExpression annotator e) t label
-         _            -> annotator ("split<" ++ unparsePurity p ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+         Pair _ _ _ _ -> annotator ("split<"
+                 ++ unparsePurity p
+                 ++ ">"
+                 ++ unparseExpression annotator e) t label
+         _            -> annotator ("split<"
+                 ++ unparsePurity p
+                 ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression annotator (Cast p e t label) =
     case e of
-         Pair _ _ _ _ -> annotator ("cast<" ++ unparsePurity p ++ ">" ++ unparseExpression annotator e) t label
-         _            -> annotator ("cast<" ++ unparsePurity p ++ ">(" ++ unparseExpression annotator e ++ ")") t label
-unparseExpression _ _ = ""
+         Pair _ _ _ _ -> annotator ("cast<"
+                 ++ unparsePurity p
+                 ++ ">"
+                 ++ unparseExpression annotator e) t label
+         _            -> annotator ("cast<"
+                 ++ unparsePurity p
+                 ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 
-unparseProgram :: (String -> (Maybe TwTy) -> String -> String) -> TwProg -> String
+unparseProgram :: (String -> (Maybe TwTy) -> String -> String)
+        -> TwProg -> String
 unparseProgram annotator (Fun f x e m s t) =
-    annotator ("fun " ++ f ++ " (" ++ unparseExpression annotator x ++ ")") s t ++ " =\n    "
-           ++ unparseExpression annotator e ++ "\n\n" ++ unparseProgram annotator m
+        annotator ("fun "
+                ++ f
+                ++ " (" ++ unparseExpression annotator x ++ ")") s t
+                ++ " =\n    "
+                ++ unparseExpression annotator e
+                ++ "\n\n"
+                ++ unparseProgram annotator m
 unparseProgram annotator (Main e s t) =
-    annotator "fun main ()" s t ++ " =\n    " ++ unparseExpression annotator e ++ "\n"
+        annotator "fun main ()" s t
+                ++ " =\n    "
+                ++ unparseExpression annotator e
+                ++ "\n"
 
 annotator :: String -> (Maybe TwTy) -> String -> String
 annotator s t _ = case t of
@@ -333,9 +402,10 @@ unparse :: TwProg -> String
 unparse m = unparseProgram annotator m
 
 annotatorVerbose :: String -> (Maybe TwTy) -> String -> String
-annotatorVerbose s t label = case t of
-                                  Just t' -> "(" ++ s ++ ")@" ++ label ++ " : " ++ unparseType t'
-                                  Nothing -> "(" ++ s ++ ")@" ++ label ++ " : (?)"
+annotatorVerbose s t label =
+        case t of
+             Just t' -> "(" ++ s ++ ")@" ++ label ++ " : " ++ unparseType t'
+             Nothing -> "(" ++ s ++ ")@" ++ label ++ " : (?)"
 
 unparseVerbose :: TwProg -> String
 unparseVerbose m= unparseProgram annotatorVerbose m

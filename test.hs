@@ -1,8 +1,8 @@
 module Main where
 
-import System.IO
 import System.Environment
 import System.Exit
+import System.IO
 import TwistParsing
 
 main = do args <- getArgs
@@ -11,13 +11,12 @@ main = do args <- getArgs
                             contents <- hGetContents handle
                             let tree' = TwistParsing.parse contents
                             case tree' of
-                                 Left _ -> do putStrLn "Syntax error"
-                                              exitFailure
+                                 Left  _    -> do putStrLn "Syntax error"
+                                                  exitFailure
                                  Right tree -> do putStrLn "Standard unparse:"
-                                                  putStr (unparse tree)
-                                                  putStrLn "\n\nVerbose unparse:"
-                                                  putStr (unparseVerbose tree)
-                                                  putStrLn ""
+                                                  putStrLn $ unparse tree
+                                                  putStrLn "\nVerbose unparse:"
+                                                  putStr $ unparseVerbose tree
                _      -> do progName <- getProgName
                             putStrLn $ "Usage: " ++ progName ++ " filename.q"
                             exitFailure

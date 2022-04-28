@@ -3,7 +3,6 @@ import qualified Data.Map as Map
 import Language.Haskell.TH (Exp(LetE))
 
 import TwistAST
-import TwistParsing
 import Data.Maybe (fromJust)
 
 
