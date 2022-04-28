@@ -101,6 +101,30 @@ getType (QPair e1 e2 t) = t
 getType (LetEx e1 e2 e3 t) = t
 getType (ITE e1 e2 e3 t) = t
 
+clearType :: TwEx -> TwEx
+clearType (VarNull t) = VarNull Nothing
+clearType (QInit t) = QInit Nothing
+clearType (TwT t) = TwT Nothing
+clearType (TwF  t) = TwF Nothing
+clearType (Var  str t) = Var str Nothing
+clearType (QRef str t) = QRef str Nothing
+
+clearType (U1 str expr t ) = U1 str expr Nothing
+clearType (U2 str expr t ) =  U2 str expr Nothing
+clearType (Msr expr t) = (Msr expr Nothing)
+
+clearType (MkEnt stty expr t) = (MkEnt stty expr Nothing)
+clearType (Split stty expr t) = (Split stty expr Nothing)
+clearType (Cast stty expr t) = (Cast stty expr Nothing)
+
+clearType (App e1 e2 t) = (App e1 e2 Nothing)
+clearType (Pair e1 e2 t) = (Pair e1 e2 Nothing)
+clearType (QPair e1 e2 t) = (QPair e1 e2 Nothing)
+
+
+clearType (LetEx e1 e2 e3 t) = (LetEx e1 e2 e3 Nothing)
+clearType (ITE e1 e2 e3 t) = (ITE e1 e2 e3 Nothing)
+
 
 
 unlabel :: TwExL -> TwEx
@@ -159,7 +183,7 @@ genConstraints' exp@(LetExL lhs@(PairL l1 l2 _ llbl) rhs expr _ label) ctx = (Pl
     where ctx' = Map.insert (unlabel l2) (getLabel l2) ctx
 
 --  Entangle, Split, and Cast: the Purity operators
-genConstraints' exp@(SplitL sty input  _ label) ctx = (PlainVar (getLabel input),  QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) :                                                     (PlainVar label, ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("ql" ++ exty))) (QEx (PlainVar ("st"++exty)) (PlainVar ("qr" ++ exty)))) : genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(SplitL sty input  _ label) ctx = (PlainVar (getLabel input),  QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) : (PlainVar label, ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
 genConstraints' exp@(MkEntL sty input  _ label) ctx = (PlainVar label,  QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("ql" ++ exty)) (PlainVar ("qr" ++ exty)))) :
                                                      (PlainVar (getLabel input), ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
@@ -177,7 +201,7 @@ progToFunList (Fun name input def rest  _) = (name, input, def):progToFunList re
 
 genConstraintsFunList :: Map.Map TwEx TyVar -> [(String, TwEx, TwEx)] -> [TyCons]
 genConstraintsFunList map [("Main", VarNull Nothing, expr)] =  genConstraintsEx "main" map expr
-genConstraintsFunList map ((name, input, def):xs) = (PlainVar name, FuncEx (PlainVar (name++"_in")) (PlainVar (name++"0"))):inputConstraint ++ genConstraintsEx name (Map.insert input (name++"in") map) def ++ genConstraintsFunList (Map.insert (Var name Nothing) name map ) xs 
+genConstraintsFunList map ((name, input, def):xs) = (PlainVar name, FuncEx (PlainVar (name++"_in")) (PlainVar (name++"0"))):inputConstraint ++ genConstraintsEx name (Map.insert (clearType input) (name++"_in") map) def ++ genConstraintsFunList (Map.insert (Var name Nothing) name map ) xs 
     where inputConstraint =
                 case getType input of
                     Nothing -> []
@@ -198,6 +222,8 @@ solveConstraints (eq : rest) =
         (QEx t1 t2, QEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, ExactlyQ s1 s2) -> solveConstraints ((t1, ExactlySt s1):(t2,ExactlyQTy s2):rest)
         (ExactlyQ t1 t2, QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
+        (Exactly (QuantTy t1 t2), QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
+        (QEx s1 s2, Exactly (QuantTy t1 t2)) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
         (EntEx t1 t2, EntEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (lhs, rhs) -> Nothing
 
