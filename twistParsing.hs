@@ -243,7 +243,7 @@ parseExpression label = parseExpressionLet label
 parseProgramFunctionParameters :: String -> GenParser Char st TwEx
 parseProgramFunctionParameters label = try (do parseChar '('
                                                parseChar ')'
-                                               return $ VarNull Nothing (label))
+                                               return $ VarNull Nothing label)
                                    <|> try (parseParentheses (parseParameter label))
 
 parseProgram :: Int -> GenParser Char st TwProg
@@ -254,9 +254,9 @@ parseProgram label = try (do spaces
                              parseChar ')'
                              t <- parseType
                              parseChar '='
-                             e <- parseExpression ("0.0")
+                             e <- parseExpression ("1.0")
                              eof
-                             return $ Main e  t "0")
+                             return $ Main e t "0")
                  <|> try (do spaces
                              parseString "fun"
                              f <- parseIdentifier
@@ -285,59 +285,57 @@ unparseType (Prod t1 t2) = "(" ++ unparseType t1 ++ " * " ++ unparseType t2 ++ "
 unparseType (Func t1 t2) = unparseType t1 ++ " -> " ++ unparseType t2
 
 unparseExpression :: (String -> (Maybe TwTy) -> String -> String) -> TwEx -> String
-unparseExpression sas (QInit t label) = sas "qinit ()" t label
-unparseExpression sas (Var x t label) = sas x t label
-unparseExpression sas (U1 u e t label) = sas (u ++ " (" ++ unparseExpression sas e ++ ")") t label
-unparseExpression sas (U2 u e t label) =
+unparseExpression annotator (QInit t label) = annotator "qinit ()" t label
+unparseExpression annotator (Var x t label) = annotator x t label
+unparseExpression annotator (U1 u e t label) = annotator (u ++ " (" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (U2 u e t label) =
     case e of
-         Pair _ _ _ _ -> sas (u ++ " " ++ unparseExpression sas e) t label
-         _            -> sas (u ++ " (" ++ unparseExpression sas e ++ ")") t label
-unparseExpression sas (LetEx (Pair x (Var "_" (Just TwBool) _) _ _) (Pair e1 (TwT Nothing _) _ _) e2 t label) =
-    sas ("let " ++ unparseExpression sas x ++ " = " ++ unparseExpression sas e1 ++ " in\n\t" ++ unparseExpression sas e2) t label
-unparseExpression sas (LetEx x e1 e2 t label) =
-    sas ("let " ++ unparseExpression sas x ++ " = " ++ unparseExpression sas e1 ++ " in\n\t" ++ unparseExpression sas e2) t label
-unparseExpression sas (ITE b e1 e2 t label) =
-    sas ("if " ++ unparseExpression sas b ++ " then " ++ unparseExpression sas e1 ++ " else " ++ unparseExpression sas e2) t label
-unparseExpression sas (App e1 e2 t label) = sas (unparseExpression sas e1 ++ " (" ++ unparseExpression sas e2 ++ ")") t label
-unparseExpression sas (Pair e1 e2 t label) = sas ("(" ++ unparseExpression sas e1 ++ ", " ++ unparseExpression sas e2 ++ ")") t label
-unparseExpression sas (TwT t label) = sas "true" t label
-unparseExpression sas (TwF t label) = sas "false" t label
-unparseExpression sas (Msr e t label) = sas ("measure (" ++ unparseExpression sas e ++ ")") t label
-unparseExpression sas (MkEnt p e t label) =
+         Pair _ _ _ _ -> annotator (u ++ " " ++ unparseExpression annotator e) t label
+         _            -> annotator (u ++ " (" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (LetEx (Pair x (Var "_" (Just TwBool) _) _ _) (Pair e1 (TwT Nothing _) _ _) e2 t label) =
+    annotator ("let " ++ unparseExpression annotator x ++ " = " ++ unparseExpression annotator e1 ++ " in\n    " ++ unparseExpression annotator e2) t label
+unparseExpression annotator (LetEx x e1 e2 t label) =
+    annotator ("let " ++ unparseExpression annotator x ++ " = " ++ unparseExpression annotator e1 ++ " in\n    " ++ unparseExpression annotator e2) t label
+unparseExpression annotator (ITE b e1 e2 t label) =
+    annotator ("if " ++ unparseExpression annotator b ++ " then " ++ unparseExpression annotator e1 ++ " else " ++ unparseExpression annotator e2) t label
+unparseExpression annotator (App e1 e2 t label) = annotator (unparseExpression annotator e1 ++ " (" ++ unparseExpression annotator e2 ++ ")") t label
+unparseExpression annotator (Pair e1 e2 t label) = annotator ("(" ++ unparseExpression annotator e1 ++ ", " ++ unparseExpression annotator e2 ++ ")") t label
+unparseExpression annotator (TwT t label) = annotator "true" t label
+unparseExpression annotator (TwF t label) = annotator "false" t label
+unparseExpression annotator (Msr e t label) = annotator ("measure (" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (MkEnt p e t label) =
     case e of
-         Pair _ _ _ _ -> sas ("entangle<" ++ unparsePurity p ++ ">" ++ unparseExpression sas e) t label
-         _            -> sas ("entangle<" ++ unparsePurity p ++ ">(" ++ unparseExpression sas e ++ ")") t label
-unparseExpression sas (Split p e t label) =
+         Pair _ _ _ _ -> annotator ("entangle<" ++ unparsePurity p ++ ">" ++ unparseExpression annotator e) t label
+         _            -> annotator ("entangle<" ++ unparsePurity p ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (Split p e t label) =
     case e of
-         Pair _ _ _ _ -> sas ("split<" ++ unparsePurity p ++ ">" ++ unparseExpression sas e) t label
-         _            -> sas ("split<" ++ unparsePurity p ++ ">(" ++ unparseExpression sas e ++ ")") t label
-unparseExpression sas (Cast p e t label) =
+         Pair _ _ _ _ -> annotator ("split<" ++ unparsePurity p ++ ">" ++ unparseExpression annotator e) t label
+         _            -> annotator ("split<" ++ unparsePurity p ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+unparseExpression annotator (Cast p e t label) =
     case e of
-         Pair _ _ _ _ -> sas ("cast<" ++ unparsePurity p ++ ">" ++ unparseExpression sas e) t label
-         _            -> sas ("cast<" ++ unparsePurity p ++ ">(" ++ unparseExpression sas e ++ ")") t label
+         Pair _ _ _ _ -> annotator ("cast<" ++ unparsePurity p ++ ">" ++ unparseExpression annotator e) t label
+         _            -> annotator ("cast<" ++ unparsePurity p ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression _ _ = ""
 
 unparseProgram :: (String -> (Maybe TwTy) -> String -> String) -> TwProg -> String
-unparseProgram sas (Fun f x e m s t) =
-    sas ("fun " ++ f ++ " (" ++ unparseExpression sas x ++ ")") s t ++ " =\n\t"
-           ++ unparseExpression sas e ++ "\n\n" ++ unparseProgram sas m
-unparseProgram sas (Main e s t) =
-    sas "fun main ()" s t ++ " =\n\t" ++ unparseExpression sas e ++ "\n"
+unparseProgram annotator (Fun f x e m s t) =
+    annotator ("fun " ++ f ++ " (" ++ unparseExpression annotator x ++ ")") s t ++ " =\n    "
+           ++ unparseExpression annotator e ++ "\n\n" ++ unparseProgram annotator m
+unparseProgram annotator (Main e s t) =
+    annotator "fun main ()" s t ++ " =\n    " ++ unparseExpression annotator e ++ "\n"
 
-sas :: String -> (Maybe TwTy) -> String -> String
-sas s t label = case t of
-                     Just t' -> s ++ " : " ++ unparseType t'
-                     Nothing -> s
+annotator :: String -> (Maybe TwTy) -> String -> String
+annotator s t _ = case t of
+                       Just t' -> s ++ " : " ++ unparseType t'
+                       Nothing -> s
 
-unparse :: Either ParseError TwProg -> String
-unparse (Left _) = "error"
-unparse (Right m) = unparseProgram sas m
+unparse :: TwProg -> String
+unparse m = unparseProgram annotator m
 
-sasVerbose :: String -> (Maybe TwTy) -> String -> String
-sasVerbose s t label = case t of
-                            Just t' -> "(" ++ s ++ ")@" ++ label ++ " : " ++ unparseType t'
-                            Nothing -> "(" ++ s ++ ")@" ++ label ++ " : (?)"
+annotatorVerbose :: String -> (Maybe TwTy) -> String -> String
+annotatorVerbose s t label = case t of
+                                  Just t' -> "(" ++ s ++ ")@" ++ label ++ " : " ++ unparseType t'
+                                  Nothing -> "(" ++ s ++ ")@" ++ label ++ " : (?)"
 
-unparseVerbose :: Either ParseError TwProg -> String
-unparseVerbose (Left _) = "error"
-unparseVerbose (Right m) = unparseProgram sasVerbose m
+unparseVerbose :: TwProg -> String
+unparseVerbose m= unparseProgram annotatorVerbose m
