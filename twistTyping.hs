@@ -112,11 +112,11 @@ genConstraints' exp@(ITE cond left right _ label) ctx = (PlainVar (getLabel cond
 genConstraints' exp@(LetEx lhs@(Pair l1 l2 _ llbl) rhs expr _ label) ctx = (PlainVar label, PlainVar (getLabel expr)):(PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs ctx ++ genConstraints' rhs ctx ++ genConstraints' expr (Map.insert l1 (getLabel l1) ctx')
     where ctx' = Map.insert l2 (getLabel l2) ctx
 
--- Entangle, Split, and Cast: the Purity operators
-genConstraints' exp@(Split sty input _ label) ctx = (PlainVar (getLabel input), QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) : (PlainVar label, ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
+--  Entangle, Split, and Cast: the Purity operators
+genConstraints' exp@(Split sty input  _ label) ctx = (PlainVar (getLabel input),  QEx (PlainVar ("st" ++ exty)) (ProdEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) : (PlainVar label, ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
-genConstraints' exp@(MkEnt sty input _ label) ctx = (PlainVar label, QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("ql" ++ exty)) (PlainVar ("qr" ++ exty)))) :
-                                                    (PlainVar (getLabel input), ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(MkEnt sty input  _ label) ctx = (PlainVar label,  QEx (PlainVar ("st" ++ exty)) (ProdEx (PlainVar ("ql" ++ exty)) (PlainVar ("qr" ++ exty)))) :
+                                                     (PlainVar (getLabel input), ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
 genConstraints' exp@(Cast sty input _ label) ctx = (PlainVar label, QEx (ExactlySt sty) (PlainVar ("q" ++ exty))):(PlainVar exty, QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty))):genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
@@ -154,14 +154,17 @@ solveConstraints (eq : rest) =
         (PlainVar x, rhs) | not $ Set.member x (freeVars rhs) -> Map.union <$> Just (Map.singleton (PlainVar x) rhs) <*> solveConstraints (map (tMap (subst (PlainVar x) rhs)) rest)
         (lhs, PlainVar y) | not $ Set.member y (freeVars lhs) -> Map.union <$> Just (Map.singleton (PlainVar y) lhs) <*> solveConstraints (map (tMap (subst (PlainVar y) lhs)) rest)
         (FuncEx t1 t2, FuncEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
+        (FuncEx t1 t2, Exactly (Func s1 s2)) -> solveConstraints ((t1, Exactly s1):(t2,Exactly s2):rest)
         (ProdEx t1 t2, ProdEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, QEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, ExactlyQ s1 s2) -> solveConstraints ((t1, ExactlySt s1):(t2,ExactlyQTy s2):rest)
         (ExactlyQ t1 t2, QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
+        (ExactlyQTy (Ent q1 q2), ProdEx t1 t2) -> solveConstraints ((ExactlyQTy q1, t1) : (ExactlyQTy q2, t2) : rest)
         (Exactly (QuantTy t1 t2), QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
         (QEx s1 s2, Exactly (QuantTy t1 t2)) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
+        (QEx s1 (ProdEx s2 s3), ProdEx t1 t2) -> solveConstraints ((t1, s2):(t2,s3):rest)
         (EntEx t1 t2, EntEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
-        (lhs, rhs) -> Nothing
+        (lhs, rhs) -> error ("couldn't unify " ++ show lhs ++ " " ++ show rhs)
 
 
 freeVars :: TyEx -> Set.Set TyVar

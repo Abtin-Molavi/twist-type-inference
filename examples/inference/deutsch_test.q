@@ -4,6 +4,6 @@ fun deutsch (uf : (qubit & qubit)<P> -> (qubit & qubit)<P>) =
     measure (H (x))
 
 
-fun cnot (xy : (qubit & qubit)<P>) = CNOT (xy)
 
-fun main () = CNOT (qinit (), qinit ())
+
+fun main () = deutsch (always_false)
