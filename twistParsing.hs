@@ -211,11 +211,11 @@ parseExpressionLetParameters label =
         try (do parseChar '('
                 e1 <- parseParameter ("0" ++ label)
                 parseChar ','
-                e2 <- parseParameter ("0" ++ label)
+                e2 <- parseParameter ("1" ++ label)
                 parseChar ')'
                 t <- parseType
                 return $ Pair e1 e2 t label)
-    <|> try (do e <- parseParameter ("1" ++ label)
+    <|> try (do e <- parseParameter ("0" ++ label)
                 return e)
     <|> parseParentheses (parseExpressionLetParameters label)
 
@@ -226,7 +226,7 @@ parseExpressionLet label =
                 parseChar '='
                 e1 <- (case x of
                             Pair _ _ _ _ -> parseExpression ("1" ++ label)
-                            _            -> parseExpression ("10" ++ label))
+                            _            -> parseExpression ("01" ++ label))
                 parseString "in"
                 e2 <- parseExpression ("2" ++ label)
                 return (case x of
@@ -235,10 +235,10 @@ parseExpressionLet label =
                                      LetEx (Pair (Var x' t ("00" ++ label))
                                                  (Var "_"
                                                       (Just TwBool)
-                                                      ("01" ++ label))
+                                                      ("10" ++ label))
                                                  Nothing ("0" ++ label))
                                            (Pair e1
-                                                 (TwT Nothing ("10" ++ label))
+                                                 (TwT Nothing ("11" ++ label))
                                                  Nothing ("1" ++ label))
                                            e2
                                            Nothing
@@ -313,14 +313,14 @@ unparseExpression annotator (Pair e1 e2 t label) =
                 ++ ")") t label
 unparseExpression annotator (QRef _ _ _) = ""
 unparseExpression annotator (QPair _ _ _ _) = ""
-unparseExpression annotator (LetEx (Pair x (Var "_" (Just TwBool) _) _ _)
-        (Pair e1 (TwT Nothing _) _ _) e2 t label) =
-        annotator ("let "
-                ++ unparseExpression annotator x
-                ++ " = "
-                ++ unparseExpression annotator e1
-                ++ " in\n    "
-                ++ unparseExpression annotator e2) t label
+-- unparseExpression annotator (LetEx (Pair x (Var "_" (Just TwBool) _) _ _)
+--         (Pair e1 (TwT Nothing _) _ _) e2 t label) =
+--         annotator ("let "
+--                 ++ unparseExpression annotator x
+--                 ++ " = "
+--                 ++ unparseExpression annotator e1
+--                 ++ " in\n    "
+--                 ++ unparseExpression annotator e2) t label
 unparseExpression annotator (LetEx x e1 e2 t label) =
         annotator ("let "
                 ++ unparseExpression annotator x
