@@ -1,9 +1,20 @@
+module Main where
+
 import System.IO
+import System.Environment
+import System.Exit
 import TwistParsing
 
-main = do handle <- openFile "test.q" ReadMode
-          contents <- hGetContents handle
-          let tree = TwistParsing.parse contents
-          print $ tree
-          putStr "\n\n"
-          putStr (unparse tree)
+main = do args <- getArgs
+          case args of
+               arg:[] -> do handle <- openFile (head args) ReadMode
+                            contents <- hGetContents handle
+                            let tree = TwistParsing.parse contents
+                            putStrLn "Standard unparse:"
+                            putStr (unparse tree)
+                            putStrLn "\n\nVerbose unparse:"
+                            putStr (unparseVerbose tree)
+                            putStrLn ""
+               _      -> do progName <- getProgName
+                            putStrLn $ "Usage: " ++ progName ++ " filename.q"
+                            exitFailure
