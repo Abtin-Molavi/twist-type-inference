@@ -1,1 +1,1 @@
-fun main () = (CNOT (H (qinit ()), qinit ()))
+fun main () = (CNOT (entangle<P>(H (qinit ()), qinit ())))

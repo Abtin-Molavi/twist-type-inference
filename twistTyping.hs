@@ -84,8 +84,33 @@ clearType (QPair e1 e2 _ label) = QPair e1 e2 Nothing label
 clearType (LetEx e1 e2 e3 _ label) = LetEx e1 e2 e3 Nothing label
 clearType (ITE e1 e2 e3 _ label) = ITE e1 e2 e3 Nothing label
 
+clearLabel :: TwEx -> TwEx
+clearLabel (VarNull t label) = VarNull t "none"
+clearLabel (QInit t label) = QInit t "none"
+clearLabel (TwT t label) = TwT t "none"
+clearLabel (TwF t label) = TwF t "none"
+clearLabel (Var str t label) = Var str t "none"
+clearLabel (QRef str t label) = QRef str t "none"
+
+clearLabel (U1 str expr t label) = U1 str expr t "none"
+clearLabel (U2 str expr t label) = U2 str expr t "none"
+clearLabel (Msr expr t label) = Msr expr t "none"
+
+clearLabel (MkEnt stty expr t label) = MkEnt stty expr t "none"
+clearLabel (Split stty expr t label) = Split stty expr t label
+clearLabel (Cast stty expr t label) = Cast stty expr t "none"
+
+clearLabel (App e1 e2 t label) = App e1 e2 t "none"
+clearLabel (Pair e1 e2 t label) = Pair e1 e2 t "none"
+clearLabel (QPair e1 e2 t label) = QPair e1 e2 t "none"
+
+clearLabel (LetEx e1 e2 e3 t label) = LetEx e1 e2 e3 t "none"
+clearLabel (ITE e1 e2 e3 t label) = ITE e1 e2 e3 t "none"
+
+
+
 ctxConstraints :: TwEx -> Map.Map TwEx TyVar -> [TyCons]
-ctxConstraints exp map = case Map.lookup exp map of
+ctxConstraints exp map = case Map.lookup (clearLabel exp) map of
   Nothing -> []
   Just s -> [(PlainVar $ getLabel exp, PlainVar s)]
 
@@ -111,21 +136,19 @@ genConstraints' exp@(Msr input _ label) ctx = (PlainVar label, Exactly TwBool):(
 
 -- Control-flow
 genConstraints' exp@(ITE cond left right _ label) ctx = (PlainVar (getLabel cond), Exactly TwBool):(PlainVar (getLabel right), PlainVar (getLabel left)):(PlainVar $ getLabel left, QEx (PlainVar $ "st"++getLabel left) (PlainVar $ "q"++getLabel left)):(PlainVar label, QEx (ExactlySt Mixed) (PlainVar $ "q"++getLabel left)): genConstraints' left ctx ++ genConstraints' right ctx ++ ctxConstraints exp ctx
-genConstraints' exp@(LetEx lhs@(Pair l1 l2 _ llbl) rhs expr _ label) ctx = (PlainVar label, PlainVar (getLabel expr)):(PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs ctx ++ genConstraints' rhs ctx ++ genConstraints' expr (Map.insert l1 (getLabel l1) ctx')
-    where ctx' = Map.insert l2 (getLabel l2) ctx
+genConstraints' exp@(LetEx lhs@(Pair l1 l2 _ llbl) rhs expr _ label) ctx = (PlainVar label, PlainVar (getLabel expr)):(PlainVar (getLabel lhs), PlainVar (getLabel rhs)):genConstraints' lhs Map.empty ++ genConstraints' rhs ctx ++ genConstraints' expr (Map.insert (clearLabel l1) (getLabel l1) ctx')
+    where ctx' = Map.insert (clearLabel l2) (getLabel l2) ctx
 
 --  Entangle, Split, and Cast: the Purity operators
-genConstraints' exp@(Split sty input  _ label) ctx = (PlainVar (getLabel input),  QEx (PlainVar ("st" ++ exty)) (ProdEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) : (PlainVar label, ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
+genConstraints' exp@(Split sty input  _ label) ctx = (PlainVar (getLabel input),  QEx (PlainVar ("st" ++ exty)) (EntEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) : (PlainVar label, ProdEx (QEx (ExactlySt sty) (PlainVar ("q" ++ exty ++ "0"))) (QEx (ExactlySt sty) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
-genConstraints' exp@(MkEnt sty input  _ label) ctx = (PlainVar label,  QEx (PlainVar ("st" ++ exty)) (ProdEx (PlainVar ("ql" ++ exty)) (PlainVar ("qr" ++ exty)))) :
+genConstraints' exp@(MkEnt sty input  _ label) ctx = (PlainVar label,  QEx (ExactlySt sty) (EntEx (PlainVar ("q" ++ exty ++ "0")) (PlainVar ("q" ++ exty ++ "1")))) :
                                                      (PlainVar (getLabel input), ProdEx (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "0"))) (QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty ++ "1")))) : genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
 genConstraints' exp@(Cast sty input _ label) ctx = (PlainVar label, QEx (ExactlySt sty) (PlainVar ("q" ++ exty))):(PlainVar exty, QEx (PlainVar ("st"++exty)) (PlainVar ("q" ++ exty))):genConstraints' input ctx ++ ctxConstraints exp ctx
     where exty = getLabel input
 genConstraints' _ _ = error "genConstraints error: not implemented"
 
-genConstraintsEx :: String -> Map.Map TwEx TyVar -> TwEx -> [TyCons]
-genConstraintsEx prefix map expr = genConstraints' expr map
 
 -- Maps a program to a list whose entries are
 --  * Name
@@ -138,12 +161,12 @@ progToFunList (Fun name input def rest _ label) = (name, input, def, label):prog
 
 -- TODO: Is the label correct in (Var name Nothing label)? Or does it not matter?
 genConstraintsFunList :: Map.Map TwEx TyVar -> [(String, TwEx, TwEx, Label)] -> [TyCons]
-genConstraintsFunList map [("main", VarNull Nothing _, expr, _)] = genConstraintsEx "main" map expr
-genConstraintsFunList map ((name, input, def, label):xs) = (PlainVar name, FuncEx (PlainVar (name++"_in")) (PlainVar (name++"0"))):inputConstraint ++ genConstraintsEx name (Map.insert (clearType input) (name++"_in") map) def ++ genConstraintsFunList (Map.insert (Var name Nothing label) name map) xs
+genConstraintsFunList map [("main", VarNull Nothing _, expr, _)] = (PlainVar "0", PlainVar $ (getLabel expr)):genConstraints' expr map
+genConstraintsFunList map ((name, input, def, label):xs) = (PlainVar name, FuncEx (PlainVar (getLabel input)) (PlainVar (getLabel def))):inputConstraint ++ genConstraints' def (Map.insert (clearLabel $ clearType input) (getLabel input) map) ++ genConstraintsFunList (Map.insert (Var name Nothing "none") name map) xs
     where inputConstraint =
                 case getType input of
                     Nothing -> []
-                    Just t -> [(PlainVar $ name++"_in", Exactly t)]
+                    Just t -> [(PlainVar $ getLabel input, Exactly t)]
 
 genConstraintsProg :: TwProg -> [TyCons]
 genConstraintsProg prog = genConstraintsFunList Map.empty (progToFunList prog)
@@ -157,14 +180,15 @@ solveConstraints (eq : rest) =
         (lhs, PlainVar y) | not $ Set.member y (freeVars lhs) -> Map.union <$> Just (Map.singleton (PlainVar y) lhs) <*> solveConstraints (map (tMap (subst (PlainVar y) lhs)) rest)
         (FuncEx t1 t2, FuncEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (FuncEx t1 t2, Exactly (Func s1 s2)) -> solveConstraints ((t1, Exactly s1):(t2,Exactly s2):rest)
+        ( Exactly (Func s1 s2), FuncEx t1 t2) -> solveConstraints ((t1, Exactly s1):(t2,Exactly s2):rest)
         (ProdEx t1 t2, ProdEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, QEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (QEx t1 t2, ExactlyQ s1 s2) -> solveConstraints ((t1, ExactlySt s1):(t2,ExactlyQTy s2):rest)
         (ExactlyQ t1 t2, QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
-        (ExactlyQTy (Ent q1 q2), ProdEx t1 t2) -> solveConstraints ((ExactlyQTy q1, t1) : (ExactlyQTy q2, t2) : rest)
+        (ExactlyQTy (Ent q1 q2), EntEx t1 t2) -> solveConstraints ((ExactlyQTy q1, t1) : (ExactlyQTy q2, t2) : rest)
         (Exactly (QuantTy t1 t2), QEx s1 s2) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
+        (Exactly (QuantTy t1 t2), ExactlyQ s1 s2) -> solveConstraints ((ExactlySt t1, ExactlySt s1):(ExactlyQTy t2, ExactlyQTy s2):rest)
         (QEx s1 s2, Exactly (QuantTy t1 t2)) -> solveConstraints ((ExactlySt t1, s1):(ExactlyQTy t2, s2):rest)
-        (QEx s1 (ProdEx s2 s3), ProdEx t1 t2) -> solveConstraints ((t1, s2):(t2,s3):rest)
         (EntEx t1 t2, EntEx s1 s2) -> solveConstraints ((t1, s1):(t2,s2):rest)
         (lhs, rhs) -> error ("couldn't unify " ++ show lhs ++ " " ++ show rhs)
 
