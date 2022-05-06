@@ -264,7 +264,7 @@ parseProgram label = try (do spaces
                              parseChar ')'
                              t <- parseType
                              parseChar '='
-                             e <- parseExpression ("1.0")
+                             e <- parseExpression ("0.0")
                              eof
                              return $ Main e t "0")
                  <|> try (do spaces
@@ -350,32 +350,32 @@ unparseExpression annotator (U2 u e t label) =
 unparseExpression annotator (Msr e t label) =
         annotator ("measure (" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression annotator (MkEnt p e t label) =
-    case e of
-         Pair _ _ _ _ -> annotator ("entangle<"
-                 ++ unparsePurity p
-                 ++ ">"
-                 ++ unparseExpression annotator e) t label
-         _            -> annotator ("entangle<"
-                 ++ unparsePurity p
-                 ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+         case e of
+              Pair _ _ _ _ -> annotator ("entangle<"
+                      ++ unparsePurity p
+                      ++ ">"
+                      ++ unparseExpression annotator e) t label
+              _            -> annotator ("entangle<"
+                      ++ unparsePurity p
+                      ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression annotator (Split p e t label) =
-    case e of
-         Pair _ _ _ _ -> annotator ("split<"
-                 ++ unparsePurity p
-                 ++ ">"
-                 ++ unparseExpression annotator e) t label
-         _            -> annotator ("split<"
-                 ++ unparsePurity p
-                 ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+        case e of
+             Pair _ _ _ _ -> annotator ("split<"
+                     ++ unparsePurity p
+                     ++ ">"
+                     ++ unparseExpression annotator e) t label
+             _            -> annotator ("split<"
+                     ++ unparsePurity p
+                     ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 unparseExpression annotator (Cast p e t label) =
-    case e of
-         Pair _ _ _ _ -> annotator ("cast<"
-                 ++ unparsePurity p
-                 ++ ">"
-                 ++ unparseExpression annotator e) t label
-         _            -> annotator ("cast<"
-                 ++ unparsePurity p
-                 ++ ">(" ++ unparseExpression annotator e ++ ")") t label
+        case e of
+             Pair _ _ _ _ -> annotator ("cast<"
+                     ++ unparsePurity p
+                     ++ ">"
+                     ++ unparseExpression annotator e) t label
+             _            -> annotator ("cast<"
+                     ++ unparsePurity p
+                     ++ ">(" ++ unparseExpression annotator e ++ ")") t label
 
 unparseProgram :: (String -> (Maybe TwTy) -> String -> String)
         -> TwProg -> String
